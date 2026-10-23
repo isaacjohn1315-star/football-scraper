@@ -5,23 +5,15 @@ module.exports = async (req, res) => {
     req.headers.authorization !==
     `Bearer ${process.env.CRON_SECRET}`
   ) {
-    return res.status(401).json({
-      error: "Unauthorized"
-    });
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const url = process.env.FLASHSCORE_URL;
 
-  if (!url) {
-    return res.status(500).json({
-      error: "Set FLASHSCORE_URL in Vercel"
-    });
-  }
-
   try {
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; FootballMonitor/1.0)"
+        "User-Agent": "Mozilla/5.0"
       },
       signal: AbortSignal.timeout(15000)
     });
@@ -29,19 +21,30 @@ module.exports = async (req, res) => {
     const html = await response.text();
     const $ = cheerio.load(html);
 
+    const matches = [];
+
+    $("[class*='event__match']").each((_, element) => {
+      const item = $(element);
+      const text = item.text().replace(/\s+/g, " ").trim();
+
+      if (text) {
+        matches.push({
+          id: item.attr("id") || null,
+          text
+        });
+      }
+    });
+
     return res.status(200).json({
-      status: response.status,
+      httpStatus: response.status,
       title: $("title").text(),
-      htmlLength: html.length,
-      preview: $("body").text()
-        .replace(/\s+/g, " ")
-        .slice(0, 1000),
-      note: "Page-fetch test only; live events are not yet parsed."
+      matchesFound: matches.length,
+      matches: matches.slice(0, 100),
+      note: "Only match elements present in the returned HTML can be extracted."
     });
   } catch (error) {
     return res.status(502).json({
-      error: "Could not retrieve the page",
-      message: error.message
+      error: error.message
     });
   }
 };
